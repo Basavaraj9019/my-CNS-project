@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Laptop 2 (Receiver) - Secure Email System</title>
+  <link rel="stylesheet" href="/static/css/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-icon">
+        <i class="fa-solid fa-inbox"></i>
+      </div>
+      <div class="brand-text">
+        <h1>Secure Email System</h1>
+        <p>Laptop 2 — Receiver Station (Verification & Decryption)</p>
+      </div>
+    </div>
+    <div class="system-status">
+      <div class="status-pill" id="receiver-status-pill">
+        <span class="status-dot"></span>
+        <span id="receiver-status-text">Listening on 0.0.0.0:5000</span>
+      </div>
+      <button class="btn btn-outline btn-sm" onclick="showTrustedSendersModal()">
+        <i class="fa-solid fa-address-book"></i> Trusted Senders
+      </button>
+    </div>
+  </header>
+
+  <!-- Container -->
+  <div class="container">
+    <div class="grid-main">
+      <!-- Left Column: Identity, Network Setup, and Inbox list -->
+      <div class="left-col">
+        <!-- Card 1: Receiver Identity -->
+        <div class="cyber-card">
+          <div class="card-title">
+            <h2><i class="fa-solid fa-id-badge" style="color: var(--accent-green);"></i> Receiver Identity</h2>
+            <button class="btn btn-outline btn-sm" onclick="showMyKeyModal()">
+              <i class="fa-solid fa-key"></i> View Public Key
+            </button>
+          </div>
+          <div class="identity-badge-box">
+            <div class="id-field">
+              <span class="id-label">Receiver ID:</span>
+              <span class="id-val" id="my-receiver-id">{{ receiver_id }}</span>
+            </div>
+            <div class="id-field">
+              <span class="id-label">Decryption Suite:</span>
+              <span class="id-val" style="color: var(--accent-green);">RSA-OAEP + AES-256-GCM</span>
+            </div>
+            <div class="id-field" style="margin-top: 6px;">
+              <span class="id-label">My SHA-256 Public Key Fingerprint:</span>
+            </div>
+            <div class="fingerprint-text" id="my-fingerprint">{{ fingerprint }}</div>
+          </div>
+          <p style="font-size: 0.76rem; color: var(--text-muted);">
+            <i class="fa-solid fa-shield-halved" style="color: var(--accent-green);"></i>
+            Private key is preserved locally in <code>receiver/keys/receiver_private.pem</code>.
+          </p>
+        </div>
+
+        <!-- Card 2: Network Connectivity & Firewall Instruction -->
+        <div class="cyber-card" style="margin-top: 1.25rem;">
+          <div class="card-title">
+            <h2><i class="fa-solid fa-wifi" style="color: var(--accent-cyan);"></i> Laptop 2 IPv4 Network Guide</h2>
+          </div>
+          <div class="identity-badge-box">
+            <span class="id-label" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">
+              Connect Laptop 1 (Sender) to any of these IPv4 addresses:
+            </span>
+            {% for ip in local_ips %}
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <code style="color: var(--accent-cyan); font-weight: bold; font-size: 0.85rem;">{{ ip }}:5000</code>
+              <button class="btn btn-outline btn-sm" style="padding: 2px 6px;" onclick="copyToClipboard('{{ ip }}')">Copy IP</button>
+            </div>
+            {% endfor %}
+          </div>
+          <details style="font-size: 0.78rem; color: var(--text-muted); cursor: pointer;">
+            <summary style="font-weight: 600; color: #cbd5e1; margin-bottom: 4px;">
+              <i class="fa-brands fa-windows" style="color: #00a4ef;"></i> Windows Defender Firewall Command
+            </summary>
+            <div style="margin-top: 6px;">
+              <p>If Laptop 1 cannot connect, run PowerShell as Administrator on Laptop 2:</p>
+              <pre class="crypto-dump" style="color: #f59e0b; font-size: 0.72rem; padding: 6px;" id="firewall-cmd">New-NetFirewallRule -DisplayName "SecureEmail Receiver" -Direction Inbound -LocalPort 5000 -Protocol TCP -Action Allow</pre>
+              <button class="btn btn-outline btn-sm" style="margin-top: 4px;" onclick="copyToClipboard(document.getElementById('firewall-cmd').innerText)">Copy Command</button>
+            </div>
+          </details>
+        </div>
+
+        <!-- Card 3: Inbox Message List -->
+        <div class="cyber-card" style="margin-top: 1.25rem;">
+          <div class="card-title">
+            <h2><i class="fa-solid fa-inbox" style="color: var(--accent-green);"></i> Incoming Messages Inbox</h2>
+            <button class="btn btn-outline btn-sm" onclick="loadInbox()">
+              <i class="fa-solid fa-rotate"></i> Refresh
+            </button>
+          </div>
+          <div class="inbox-list" id="inbox-list">
+            <div style="text-align: center; padding: 2rem; color: var(--text-muted); font-size: 0.85rem;">
+              <i class="fa-solid fa-spinner fa-spin"></i> Listening for incoming transmissions...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Verification & Decryption Inspector -->
+      <div class="right-col">
+        <div class="cyber-card" id="inspector-card">
+          <div class="card-title">
+            <h2><i class="fa-solid fa-magnifying-glass-chart" style="color: var(--accent-cyan);"></i> Cryptographic Verification & Decryption Inspector</h2>
+            <span class="badge badge-info" id="detail-status-badge">Select a Message</span>
+          </div>
+
+          <!-- Empty State -->
+          <div id="inspector-empty" style="text-align: center; padding: 4rem 1rem; color: var(--text-muted);">
+            <i class="fa-solid fa-envelope-circle-check" style="font-size: 3rem; color: #1e293b; margin-bottom: 1rem;"></i>
+            <h3>No Message Selected</h3>
+            <p style="font-size: 0.85rem; margin-top: 0.5rem;">
+              Select a received message from the inbox on the left to inspect its cryptographic verification pipeline, digital signature, and decrypted contents.
+            </p>
+          </div>
+
+          <!-- Message Detail State -->
+          <div id="inspector-content" style="display: none;">
+            <!-- Message Header Info -->
+            <div class="identity-badge-box">
+              <div class="id-field">
+                <span class="id-label">Sender Identity:</span>
+                <span class="id-val" id="detail-sender" style="color: var(--accent-cyan);">-</span>
+              </div>
+              <div class="id-field">
+                <span class="id-label">Email Subject:</span>
+                <span class="id-val" id="detail-subject">-</span>
+              </div>
+              <div class="id-field">
+                <span class="id-label">Sent Timestamp:</span>
+                <span class="id-val" id="detail-timestamp" style="font-size: 0.8rem;">-</span>
+              </div>
+              <div class="id-field">
+                <span class="id-label">Message ID:</span>
+                <span class="id-val" id="detail-msg-id" style="font-size: 0.75rem;">-</span>
+              </div>
+            </div>
+
+            <!-- 4 Core Security Pillars Badges -->
+            <h4 style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 0.6rem;">
+              <i class="fa-solid fa-shield-halved" style="color: var(--accent-green);"></i> Cryptographic Security Verification Gates
+            </h4>
+            <div class="pillars-grid">
+              <div class="pillar-card">
+                <div class="pillar-title">1. Confidentiality</div>
+                <div class="pillar-algo">AES-256-GCM + OAEP</div>
+                <span class="badge" id="pillar-confidentiality">-</span>
+              </div>
+              <div class="pillar-card">
+                <div class="pillar-title">2. Message Integrity</div>
+                <div class="pillar-algo">GCM Tag & SHA-256</div>
+                <span class="badge" id="pillar-integrity">-</span>
+              </div>
+              <div class="pillar-card">
+                <div class="pillar-title">3. Authentication</div>
+                <div class="pillar-algo">RSA-PSS with SHA-256</div>
+                <span class="badge" id="pillar-auth">-</span>
+              </div>
+              <div class="pillar-card">
+                <div class="pillar-title">4. Non-Repudiation</div>
+                <div class="pillar-algo">Sender Key Fingerprint</div>
+                <span class="badge" id="pillar-nonrep">-</span>
+              </div>
+            </div>
+
+            <!-- Decrypted Message View -->
+            <div id="decrypted-box" class="decrypted-msg-box">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <h4 style="font-size: 0.9rem; color: #fff; display: flex; align-items: center; gap: 6px;">
+                  <i class="fa-solid fa-lock-open" style="color: var(--accent-green);"></i> Decrypted Message Body
+                </h4>
+                <span class="badge badge-success" id="decrypted-badge">Decrypted & Verified</span>
+              </div>
+              <div class="decrypted-body-text" id="decrypted-text">Loading...</div>
+            </div>
+
+            <!-- Security Attack & Defense Testing Studio -->
+            <div class="tamper-lab-box" style="margin-bottom: 1.25rem;">
+              <h3><i class="fa-solid fa-vial-virus"></i> Security Defense Testing Laboratory</h3>
+              <p style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 0.75rem;">
+                Click any attack button below to simulate tampering on this message. Watch the receiver's defensive barriers immediately intercept and isolate the attack!
+              </p>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <button class="btn btn-attack btn-sm" onclick="simulateAttack('tamper_ciphertext')">
+                  <i class="fa-solid fa-bug"></i> Test: Tamper Ciphertext (AES-GCM Tag Fails)
+                </button>
+                <button class="btn btn-attack btn-sm" onclick="simulateAttack('tamper_signature')">
+                  <i class="fa-solid fa-file-signature"></i> Test: Corrupt Signature (RSA-PSS Fails)
+                </button>
+                <button class="btn btn-attack btn-sm" onclick="simulateAttack('tamper_subject')">
+                  <i class="fa-solid fa-heading"></i> Test: Tamper Subject (AAD Mismatch)
+                </button>
+                <button class="btn btn-attack btn-sm" onclick="simulateAttack('replay_attack')">
+                  <i class="fa-solid fa-arrows-rotate"></i> Test: Replay Attack (Replay Cache Blocks)
+                </button>
+              </div>
+            </div>
+
+            <!-- Step-by-Step Audit Trail -->
+            <h4 style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 0.5rem;">
+              <i class="fa-solid fa-list-check" style="color: var(--accent-cyan);"></i> Cryptographic Audit Trail
+            </h4>
+            <div class="audit-list" id="audit-steps-list">
+              <!-- Rendered via JS -->
+            </div>
+
+            <!-- Raw Wire Envelope Dump (Collapsible) -->
+            <details style="margin-top: 1rem;">
+              <summary style="font-size: 0.85rem; color: var(--accent-cyan); cursor: pointer; font-weight: 600;">
+                <i class="fa-solid fa-code"></i> View Raw Transmitted Envelope (Base64 Cryptographic Artifacts)
+              </summary>
+              <div style="margin-top: 0.5rem;">
+                <pre class="crypto-dump" id="raw-envelope-dump">-</pre>
+              </div>
+            </details>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Public Key Viewer -->
+  <div class="modal-overlay" id="my-key-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 style="color: #fff;"><i class="fa-solid fa-key" style="color: var(--accent-green);"></i> Receiver RSA Public Key</h3>
+        <button class="modal-close" onclick="closeMyKeyModal()">&times;</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
+        This is Laptop 2's public key. Laptop 1 retrieves this key over the network to encrypt the one-time AES session key using RSA-OAEP.
+      </p>
+      <div class="id-field" style="margin-bottom: 0.5rem;">
+        <span class="id-label">Fingerprint:</span>
+        <span class="id-val" style="color: var(--accent-green);" id="modal-key-fp">-</span>
+      </div>
+      <pre class="crypto-dump" id="modal-key-pem">Loading...</pre>
+    </div>
+  </div>
+
+  <!-- Modal: Trusted Senders Address Book -->
+  <div class="modal-overlay" id="trusted-senders-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 style="color: #fff;"><i class="fa-solid fa-address-book" style="color: var(--accent-cyan);"></i> Trusted Senders (Public Key Directory)</h3>
+        <button class="modal-close" onclick="closeTrustedSendersModal()">&times;</button>
+      </div>
+      <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+        Registered sender public keys and verified fingerprints. Protects against Public Key Substitution (MITM) attacks.
+      </p>
+      <div id="trusted-senders-list">Loading...</div>
+    </div>
+  </div>
+
+  <!-- Secure Mail Incoming Notification Drop-Box Container -->
+  <div class="secure-mail-dropbox-container" id="secure-mail-dropbox-container"></div>
+
+  <!-- Secure Mail In-App Modal Dialog Box (Replaces native 'Antigravity' alerts) -->
+  <div class="modal-overlay" id="secure-mail-dialog-modal">
+    <div class="secure-mail-modal-box">
+      <div class="secure-mail-modal-title">
+        <i class="fa-solid fa-shield-halved" id="secure-mail-modal-icon"></i>
+        <span id="secure-mail-modal-title-text">Secure Mail</span>
+      </div>
+      <div class="secure-mail-modal-message" id="secure-mail-modal-body-text"></div>
+      <div style="overflow: hidden;">
+        <button class="secure-mail-modal-btn" onclick="closeSecureMailAlert()">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/receiver.js"></script>
+</body>
+</html>
